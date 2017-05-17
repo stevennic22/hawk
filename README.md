@@ -3,8 +3,8 @@
 
 ### Features
 
-- Parse arguments and run pull reviews for either Android or iOS
-- Store app store last checked/which countries in json file
+- Parse arguments and pull reviews for either Android or iOS
+- Store app store last checked/which countries to run in json file
 - Only post reviews since last check (skip countries if necessary)
 - Translate non-english reviews (TODO: Post untranslated text as well)
 
@@ -22,7 +22,7 @@
 ### Instructions
 
 - Set up an incoming webhook in Slack (or use the webhook for posting as SlackBot)
-  - Once set up, include this as 'webhook' or 'url' (respectively) under the 'SlackURL' heading
+  - Once set up, include this as 'webhook' or 'url' (respectively) under the 'SlackURL' heading in review.json
     - If using SlackBot, channel must be included as well
 - Add app ID from Apple store and Google Play store to control json file
   - For Android apps, the developer must download either the p12 or json file after activating the Google Play Developer API for the app
