@@ -1,4 +1,4 @@
-# Hawk - Slack review poster
+# Hawk - Slack mobile app review poster
 > A script to check the Google Play Store and iOS App Store for new reviews for your app, and post them to Slack.
 
 ### Features
