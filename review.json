@@ -1,4 +1,32 @@
 {
+    "slackURL": {
+        "username": "your_bot_name", 
+        "slackbot": {
+            "URL": "https://{your_slack}.slack.com/services/hooks/slackbot?token=ABCDEFGHIJKLMNOPQRSTUVWX"
+        }, 
+        "RTM": {
+            "key": "xox0-12345678901-ABCDEFGHIJABCDEFGHIJABCDEFGH-12345678901-ABCDEFGHIJABCDEFGHIJKLMN"
+        }, 
+        "webhook": {
+            "URL": "https://hooks.slack.com/services/LargeValue/OtherLargeValue"
+        }, 
+        "post_type": "RTM", 
+        "channel": "reviews"
+    }, 
+    "test_slackURL": {
+        "username": "your_bot_name", 
+        "slackbot": {
+            "URL": "https://{your_slack}.slack.com/services/hooks/slackbot?token=ABCDEFGHIJKLMNOPQRSTUVWX"
+        }, 
+        "RTM": { 
+            "key": "xox0-12345678901-ABCDEFGHIJABCDEFGHIJABCDEFGH-12345678901-ABCDEFGHIJABCDEFGHIJKLMN"
+        }, 
+        "webhook": {
+            "URL": "https://hooks.slack.com/services/LargeValue/OtherLargeValue"
+        }, 
+        "post_type": "webhook", 
+        "channel": "reviews"
+    }, 
     "playStore": {
         "service_account_email": "", 
         "appID": "com.Google.YourAppID", 
@@ -7,13 +35,6 @@
         "scope": [
             "https://www.googleapis.com/auth/androidpublisher"
         ]
-    }, 
-    "slackURL": {
-        "url": "https://{your_slack}.slack.com/services/hooks/slackbot?token=ABCDEFGHIJKLMNOPQRSTUVWX", 
-        "debug_url": "https://{test_slack}.slack.com/services/hooks/slackbot?token=ABCDEFGHIJKLMNOPQRSTUVWX", 
-        "webhook": "https://hooks.slack.com/services/LargeValue/OtherLargeValue", 
-        "test_webhook": "https://hooks.slack.com/services/LargeValue/OtherLargeValue", 
-        "channel": "reviews"
     }, 
     "appStore": {
         "appstoreID": ""

@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-### Purpose: ################################################################
-###  Parse arguments and run pull reviews for either Android or iOS       ###
-###  Store app store last checked/which countries in json file            ###
-###  Only post reviews since last check (skip countries if necessary)     ###
-###  Translate non-english reviews (TODO: Post untranslated text as well) ###
-#############################################################################
+ ## Purpose/Functions: ######################################################
+###  -Parse arguments and run pull reviews for either Android or iOS       ###
+###  -Store app store last checked/which countries in json file            ###
+###  -Only post reviews since last check (skip countries if necessary)     ###
+###  -Translate non-english reviews                                        ###
+###  -Post/test against a test slack                                       ###
+ ############################################################################
 
 import requests, json, datetime, sys, os, logging
 from time import sleep
@@ -34,7 +35,26 @@ formatter = logging.Formatter("[%(asctime)s] '%(levelname)s': { %(message)s }\n"
 handler.setFormatter(formatter)
 log.addHandler(handler)
 
-def translateText(reviewText, startLang, returnLang = "en"):
+def setup_RTM(slack_configuration):
+  #Import slackclient module
+  #Build connection credentials
+  #Get proper channel ID if it hasn't already been found
+  #Return connection credentials and updated slack configuration (with channel ID included)
+
+  from slackclient import SlackClient
+
+  slack_connection = SlackClient(slack_configuration["RTM"]["key"])
+  
+  if "channel_ID" not in slack_configuration["RTM"]:
+    chan_api_call = slack_connection.api_call("channels.list")
+    if chan_api_call.get('ok'):
+      chans = chan_api_call.get('channels')
+      for channel in chans:
+        if channel['name'] == slack_configuration["channel"]:
+          slack_configuration["RTM"]["channel_ID"] = channel['id']
+  return slack_configuration, slack_connection
+
+def translate_text(reviewText, startLang, returnLang = "en"):
   #Translate provided text
   #Return it as a single string
   try:
@@ -42,7 +62,7 @@ def translateText(reviewText, startLang, returnLang = "en"):
     reviewText = reviewText.encode('utf-8','ignore')
   except UnicodeEncodeError as e:
     log.error("UnicodeEncodeError when translating")
-    return "error"
+    return "Error translating. Sorry about that. Beginning language was: " + startLang
 
   transURL = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=" + startLang + "&tl=en&dt=t&q=" + requests.utils.quote(reviewText)
   
@@ -55,64 +75,150 @@ def translateText(reviewText, startLang, returnLang = "en"):
   for x in response.json()[0]:
     responseString = responseString + " " + x[0].rstrip(' ')
   log.info("Translated string: " + responseString)
-  return responseString# + "\n" + reviewText
+  return responseString
+
+def build_messages(buildDict, appStoreType, countryData):
+  if appStoreType == "android":
+    buildDict["review_string"] = "_" + buildDict["date"] + " | " + buildDict["version"] + "_\n" + buildDict["stars"] + " _by " + buildDict["author"] + "_ " + countryData["flag"] + "\n" + buildDict["review"][1:] + "\n----------------------------------"
+    
+    if countryData["translate"] == "True":
+      buildDict["translated_review"] = translate_text(buildDict["review"][1:], countryData["countryLang"][:2])
+    
+  elif appStoreType == "ios":
+    buildDict["review_string"] = "_" + buildDict["date"] + " | " + buildDict["version"] + "_\n" + buildDict["stars"] + " _by " + buildDict["author"] + "_ " + countryData["flag"] + "\n*" + buildDict["title"] + "*\n" + buildDict["review"] + "\n----------------------------------"
+    
+    if countryData["translate"] == "True":
+      translated_title = translate_text(buildDict["title"], countryData["countryLang"][:2])
+      translated_review = translate_text(buildDict["review"], countryData["countryLang"][:2])
+      buildDict["translated_review"] = translated_title + " | " + translated_review
+      
+  return buildDict
 
 def post_to_slack(typeOReview, slack_config, data, incomingMsgs):
-  #Change "webhook" to "url" from review.json and un-comment  the channel information to send as slackbot.
-  #If this is swapped, you must also swap out the post requests below
-  slack_url = slack_config["webhook"]# + "&channel=" + slack_config["channel"]
-  log.info("Posting to slack: " + slack_url)
+  if slack_config["post_type"] == "RTM":
+    slack_config, slack_connect = setup_RTM(slack_config)
+  
+  bot_icon = ":" + typeOReview + ":"
+  if bot_icon == ":post:":
+    bot_icon = ":robot_face:"
 
+  #If type is post, automatically post as bot to Slack
   if typeOReview == "post":
     log.info("Manually posting to slack.")
     log.info("Message: " + incomingMsgs)
+    if slack_config["post_type"] == "RTM":
 
-    #Un-comment here and comment command below if using slackbot to post
-    #log.info(requests.post(slack_url, incomingMsgs.encode('utf-8','ignore')))
-    log.info(requests.post(slack_url, json={
-      "text": incomingMsgs.encode('utf-8','ignore'),
-      "icon_emoji": ":robot_face:",
-      "username": slack_config["username"]
-    }))
-    sleep(1)
-
-  elif typeOReview == "android":
-    for message in reversed(incomingMsgs):
-      if data["translate"] == "True":
-        message["review"] = translateText(message["review"][1:], data["countryLang"][:2])
-        msgString = "_" + message["date"] + " | " + message["version"] + "_\n" + message["stars"] + " _by " + message["author"] + "_ " + data["flag"] + "\n" + message["review"] + "\n----------------------------------"
+      if slack_connect.rtm_connect():
+        log.info("Bot connected and running!")
+        mostRecentMessage = slack_connect.api_call(
+          "chat.postMessage",
+          channel=slack_config["RTM"]["channel_ID"],
+          text=incomingMsgs.encode('utf-8', 'ignore'),
+          as_user=False,
+          username=slack_config["username"],
+          icon_emoji=bot_icon,
+          unfurl_links=False
+        )
+        log.info("Response: ")
+        log.info(mostRecentMessage)
       else:
-        msgString = "_" + message["date"] + " | " + message["version"] + "_\n" + message["stars"] + " _by " + message["author"] + "_ " + data["flag"] + "\n" + message["review"][1:] + "\n----------------------------------"
-      
-      log.info(msgString)
+        log.info("Connection failed. Invalid Slack token or bot ID?")
+        print("Connection failed. Invalid Slack token or bot ID?")
 
-      #Un-comment here and comment command below if using slackbot to post
-      #log.info(requests.post(slack_url, msgString.encode('utf-8','ignore')))
-      log.info(requests.post(slack_url, json={
-        "icon_emoji": ":android:",
-        "text": msgString.encode('utf-8','ignore'),
-        "username":"mikerowebot"
-      }))
-      sleep(2)
-  elif typeOReview == "ios":
-    for message in reversed(incomingMsgs):
-      if data["translate"] == "True":
-        message["title"] = translateText(message["title"], data["countryLang"][:2])
-        message["review"] = translateText(message["review"][1:], data["countryLang"][:2])
-      msgString = "_" + message["date"] + " | " + message["version"] + "_\n" + message["stars"] + " _by " + message["author"] + "_ " + data["flag"] + "\n*" + message["title"] + "*\n" + message["review"] + "\n----------------------------------"
-      
-      log.info(msgString)
+    elif slack_config["post_type"] == "webhook":
+      slack_url = slack_config["webhook"]["URL"]
+      log.info("Posting to slack: " + slack_url)
+      log.info("Response: " + requests.post(slack_url, json={
+        "text": incomingMsgs.encode('utf-8','ignore'),
+        "icon_emoji": bot_icon,
+        "username": slack_config["username"]
+      }).text)
 
-      #Un-comment here and comment command below if using slackbot to post
-      #log.info(requests.post(slack_url, msgString.encode('utf-8','ignore')))
-      log.info(requests.post(slack_url, json={
-        "icon_emoji": ":ios:",
-        "text": msgString.encode('utf-8','ignore'),
-        "username":"mikerowebot"
-      }))
-      sleep(2)
+    elif slack_config["post_type"] == "slackbot":
+      slack_url = slack_config["slackbot"]["URL"] + "&channel=" + slack_config["channel"]
+      log.info("Posting to slack: " + slack_url)
+      log.info("Response: " + requests.post(slack_url, incomingMsgs.encode('utf-8','ignore')).text)
+      sleep(1)
 
-def getAndroidReviews(playStoreInfo):
+  else:
+    #If type is not post, determine best method to post, build message, and post it to Slack as bot
+    if slack_config["post_type"] == "RTM":
+
+      if slack_connect.rtm_connect():
+        log.info("Bot connected and running!")
+        for message in reversed(incomingMsgs):
+          message = build_messages(message, typeOReview, data)
+
+          log.info("Message: " + message["review_string"])
+
+          mostRecentMessage = slack_connect.api_call(
+            "chat.postMessage",
+            channel=slack_config["RTM"]["channel_ID"],
+            text=message["review_string"],
+            as_user=False,
+            username=slack_config["username"],
+            icon_emoji=bot_icon,
+            unfurl_links=False
+          )
+          log.info("Response: ")
+          log.info(mostRecentMessage)
+
+          if "translated_review" in message:
+            log.info("Translated review: " + message["translated_review"])
+            followUpMessage = slack_connect.api_call(
+              "chat.postMessage",
+              channel=slack_config["RTM"]["channel_ID"],
+              text=message["translated_review"],
+              as_user=False,
+              username=slack_config["username"],
+              icon_emoji=bot_icon,
+              unfurl_links=False,
+              reply_broadcast=False,
+              thread_ts= mostRecentMessage['ts']
+            )
+            
+            log.info("Translation response: ")
+            log.info(followUpMessage)
+          sleep(2)
+
+    elif slack_config["post_type"] == "webhook":
+      slack_url = slack_config["webhook"]["URL"]
+      log.info("Posting to slack: " + slack_url)
+      for message in reversed(incomingMsgs):
+        message = build_messages(message, typeOReview, data)
+        log.info(requests.post(slack_url, json={
+          "icon_emoji": bot_icon,
+          "text": message["review_string"],
+          "username": slack_config["username"]
+        }).text)
+        
+        if "translated_review" in message:
+          log.info("Translated review: " + message["translated_review"])
+          sleep(1)
+          log.info(requests.post(slack_url, json={
+            "icon_emoji": bot_icon,
+            "text": "  " + message["translated_review"] + "\n----------------------------------",
+            "username": slack_config["username"]
+          }).text)
+        sleep(2)
+
+    elif slack_config["post_type"] == "slackbot":
+      slack_url = slack_config["slackbot"]["URL"] + "&channel=" + slack_config["channel"]
+      log.info("Posting to slack: " + slack_url)
+      for message in reversed(incomingMsgs):
+        message = build_messages(message, typeOReview, data)
+
+        log.info("Message: " + message["review_string"])
+        log.info(requests.post(slack_url, message["review_string"]).text)
+        
+        if "translated_review" in message:
+          log.info("Translated review: " + message["translated_review"])
+          sleep(1)
+          log.info(requests.post(slack_url, message["translated_review"] + "\n----------------------------------").text)
+        sleep(2)
+  return slack_config
+
+def get_Android_reviews(playStoreInfo):
   #Download all reviews for app from Play Store and return as a json dict
   #Also store it in output.json file
   import apiclient, oauth2client, httplib2
@@ -150,7 +256,7 @@ def getAndroidReviews(playStoreInfo):
   
   return reviews_list
 
-def sortAndroidReviews(data, allReviews):
+def sort_Android_reviews(data, allReviews):
   #Sort through reviews from the Play Store
   #If reviews match country, add to list to return for posting to slack
   #Stops and returns everything if skip value found
@@ -200,7 +306,7 @@ def sortAndroidReviews(data, allReviews):
     messages.append({"author": authorName, "version": appVersion, "date": reviewDate, "review": review, "link": reviewLink, "stars": stars})
   return [skipVal, messages]
 
-def getAppleReviews(appID, storeINFO, page=0):
+def get_Apple_reviews(appID, storeINFO, page=0):
   #Sort through reviews from the Apple store
   #Reviews added to list to return for posting to slack (if found before skip/stop value)
   storeID = storeINFO["appleStoreID"]
@@ -279,6 +385,7 @@ def main(argv):
   parser.add_argument('-i','--ios', action='store_true', help="gather iOS reviews from RSS feeds")
   parser.add_argument('-p','--post', metavar="yer_str_here", help="post message directly to slack")
   parser.add_argument('-a','--android', action='store_true', help="gather Android reviews from API")
+  parser.add_argument('-t','--test', action='store_true', help="use test slack settings from review.json")
 
   args = parser.parse_args()
 
@@ -298,6 +405,11 @@ def main(argv):
   with open(fileLoc,'r') as sJson:
     storeData = json.load(sJson)
   
+  if args.test:
+    log.warning("TEST FLAG ENABLED, TEMPORARILY STORING TEST SLACK INFORMATION AS IF LIVE.")
+    BACKUP_SLACK = storeData['slackURL']
+    storeData['slackURL'] = storeData['test_slackURL']
+
   if storeData["actuallyRun"] != "True":
     log.warning("All scripts disabled. Exiting.")
     exit()
@@ -310,7 +422,7 @@ def main(argv):
   elif args.android:
     print "Android"
     print ""
-    reviews = getAndroidReviews(storeData["playStore"])
+    reviews = get_Android_reviews(storeData["playStore"])
 
     #Loop through stores imported from review.json
     #Extract reviews, post new ones for each store to Slack
@@ -321,15 +433,26 @@ def main(argv):
       if data["skip"] == "True":
         log.warning(store + " skipped.")
         continue
-      nextStop = sortAndroidReviews(data, reviews)
-      data["playstoreCheck"] = nextStop[0]
-      log.info(store + " stop value: " + nextStop[0])
-      if len(nextStop[1]) > 0:
-        post_to_slack("android", storeData["slackURL"], data, nextStop[1])
+      nextStop, reviews_to_post = sort_Android_reviews(data, reviews)
       
-      with open(fileLoc,'w') as sJson:
-        json.dump(storeData, sJson, indent=4)
+      if args.test:
+        log.warning("Ignoring updated stop value: " + nextStop)
+      else:
+        data["playstoreCheck"] = nextStop
+        log.info(store + " stop value: " + nextStop)
+
+      if len(reviews_to_post) > 0:
+        storeData["slackURL"] = post_to_slack("android", storeData["slackURL"], data, reviews_to_post)
+
       sleep(2)
+
+    if args.test:
+      log.warning("Moving test/live slack settings back to normal places.")
+      storeData["slackURL"] = BACKUP_SLACK
+
+    with open(fileLoc,'w') as sJson:
+      json.dump(storeData, sJson, indent=4)
+
     log.info("Reached last country. Exiting.")
   elif args.ios:
     print "iOS"
@@ -345,18 +468,37 @@ def main(argv):
         log.warning(store + " skipped.")
         continue
 
-      nextStop = getAppleReviews(storeData["appStore"]["appstoreID"],data)
-      data["appleCheck"] = nextStop[0]
-      log.info(store + " stop value: " + nextStop[0])
-      if len(nextStop[1]) > 0:
-        post_to_slack("ios", storeData["slackURL"], data, nextStop[1])
+      nextStop, reviews_to_post = get_Apple_reviews(storeData["appStore"]["appstoreID"],data)
       
-      with open(fileLoc,'w') as sJson:
-        json.dump(storeData, sJson, indent=4)
+      if args.test:
+        log.warning("Ignoring updated stop value: " + nextStop)
+      else:
+        data["appleCheck"] = nextStop
+        log.info(store + " stop value: " + nextStop)
+
+      if len(reviews_to_post) > 0:
+        storeData["slackURL"] = post_to_slack("ios", storeData["slackURL"], data, reviews_to_post)
+
       sleep(2)
+
+    if args.test:
+      log.warning("Moving test/live slack settings back to normal places.")
+      storeData["slackURL"] = BACKUP_SLACK
+
+    with open(fileLoc,'w') as sJson:
+      json.dump(storeData, sJson, indent=4)
     log.info("Reached last country. Exiting.")
+
   elif args.post is not None:
-    post_to_slack("post", storeData["slackURL"], storeData["appstores"]["United States"], args.post)
+    #Manually post directly to Slack as bot
+    storeData["slackURL"] = post_to_slack("post", storeData["slackURL"], storeData["appstores"]["United States"], args.post)
+
+    if args.test:
+      log.warning("Moving test/live slack settings back to normal places.")
+      storeData["slackURL"] = BACKUP_SLACK
+
+    with open(fileLoc, 'w') as sJson:
+      json.dump(storeData, sJson, indent=4)
 
 if __name__ == '__main__':
   main(sys.argv[1:])

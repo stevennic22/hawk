@@ -1,12 +1,14 @@
 # Hawk - Slack review poster
-> A script to check Google Play Store and iOS App Store for new reviews for your app, and post them to Slack.
+> A script to check the Google Play Store and iOS App Store for new reviews for your app, and post them to Slack.
 
 ### Features
 
 - Parse arguments and pull reviews for either Android or iOS
 - Store app store last checked/which countries to run in json file
 - Only post reviews since last check (skip countries if necessary)
-- Translate non-english reviews (TODO: Post untranslated text as well)
+- Translate non-english reviews
+- Use test/debug slack credentials to test formatting elsewhere, without missing reviews and posts on a live slack
+  - Example: `python review.pyw -ta` would search for Android reviews, post them to a test Slack and not update review.json for new stop values
 
 ### Language(s)
 
@@ -14,10 +16,11 @@
 
 ### Requirements
 
-| Module
+| Modules
 | ------------------------------------------------------------------------------------------------------
 | [Requests](https://pypi.python.org/pypi/requests)
 | [Google API Python Client](https://developers.google.com/api-client-library/python/start/installation)
+| [SlackClient RTM API](https://pypi.python.org/pypi/slackclient) (Optional)
 
 ### Instructions
 
