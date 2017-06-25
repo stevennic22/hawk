@@ -251,7 +251,9 @@ def get_Android_reviews(playStoreInfo):
   reviews_page = reviews_resource.list(packageName=playStoreInfo["appID"], maxResults=100).execute()
   reviews_list = reviews_page["reviews"]
 
-  with open('output.json', "w") as outfile:
+  if(os.path.isdir('output') == False):
+    os.makedirs('output')
+  with open('output' + os.sep + 'android_output.json', "w") as outfile:
     json.dump(reviews_list, outfile, indent=4)
   
   return reviews_list
@@ -306,7 +308,7 @@ def sort_Android_reviews(data, allReviews):
     messages.append({"author": authorName, "version": appVersion, "date": reviewDate, "review": review, "link": reviewLink, "stars": stars})
   return [skipVal, messages]
 
-def get_Apple_reviews(appID, storeINFO, page=0):
+def get_Apple_reviews(appID, storeName, storeINFO, page=0):
   #Sort through reviews from the Apple store
   #Reviews added to list to return for posting to slack (if found before skip/stop value)
   storeID = storeINFO["appleStoreID"]
@@ -339,7 +341,9 @@ def get_Apple_reviews(appID, storeINFO, page=0):
     return (skipVal, [])
 
   #Dump to an output file
-  with open('output.json', "w") as outfile:
+  if(os.path.isdir('output') == False):
+    os.makedirs('output')
+  with open('output' + os.sep + storeName + '_output.json', "w") as outfile:
     json.dump(storedData, outfile, indent=4)
 
   trip = False
@@ -468,7 +472,7 @@ def main(argv):
         log.warning(store + " skipped.")
         continue
 
-      nextStop, reviews_to_post = get_Apple_reviews(storeData["appStore"]["appstoreID"],data)
+      nextStop, reviews_to_post = get_Apple_reviews(storeData["appStore"]["appstoreID"], store, data)
       
       if args.test:
         log.warning("Ignoring updated stop value: " + nextStop)
