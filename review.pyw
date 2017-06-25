@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
- ## Purpose/Functions: ######################################################
-###  -Parse arguments and run pull reviews for either Android or iOS       ###
-###  -Store app store last checked/which countries in json file            ###
-###  -Only post reviews since last check (skip countries if necessary)     ###
-###  -Translate non-english reviews                                        ###
-###  -Post/test against a test slack                                       ###
- ############################################################################
+ ## Purpose/Functions: ########################################################
+###  -Parse arguments and run pull reviews for either Android or iOS         ###
+###  -Store app store last checked/which countries in json file              ###
+###  -Only post reviews since last check (skip countries if necessary)       ###
+###  -Translate non-english reviews (Chinese/Japanese do not work currently) ###
+###  -Post/test against a test slack                                         ###
+ ##############################################################################
 
 import requests, json, datetime, sys, os, logging
 from time import sleep
