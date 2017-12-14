@@ -94,7 +94,8 @@ def build_messages(buildDict, appStoreType, countryData):
       
   return buildDict
 
-def post_to_slack(typeOReview, slack_config, data, incomingMsgs):
+def post_to_slack(typeOReview, slack_config, data, incomingMsgs, do_build = True):
+  as_a_user = False
   if slack_config["post_type"] == "RTM":
     slack_config, slack_connect = setup_RTM(slack_config)
   
@@ -102,51 +103,16 @@ def post_to_slack(typeOReview, slack_config, data, incomingMsgs):
   if bot_icon == ":post:":
     bot_icon = ":robot_face:"
 
-  #If type is post, automatically post as bot to Slack
   if typeOReview == "post":
     log.info("Manually posting to slack.")
-    log.info("Message: " + incomingMsgs)
+    do_build = False
+    as_a_user = True
+
     if slack_config["post_type"] == "RTM":
-
-      if slack_connect.rtm_connect():
-        log.info("Bot connected and running!")
-        mostRecentMessage = slack_connect.api_call(
-          "chat.postMessage",
-          channel=slack_config["RTM"]["channel_ID"],
-          text=incomingMsgs.encode('utf-8', 'ignore'),
-          as_user=False,
-          username=slack_config["username"],
-          icon_emoji=bot_icon,
-          unfurl_links=False
-        )
-        log.info("Response: ")
-        log.info(mostRecentMessage)
-      else:
-        log.info("Connection failed. Invalid Slack token or bot ID?")
-        print("Connection failed. Invalid Slack token or bot ID?")
-
-    elif slack_config["post_type"] == "webhook":
-      slack_url = slack_config["webhook"]["URL"]
-      log.info("Posting to slack: " + slack_url)
-      log.info("Response: " + requests.post(slack_url, json={
-        "text": incomingMsgs.encode('utf-8','ignore'),
-        "icon_emoji": bot_icon,
-        "username": slack_config["username"]
-      }).text)
-
-    elif slack_config["post_type"] == "slackbot":
-      slack_url = slack_config["slackbot"]["URL"] + "&channel=" + slack_config["channel"]
-      log.info("Posting to slack: " + slack_url)
-      log.info("Response: " + requests.post(slack_url, incomingMsgs.encode('utf-8','ignore')).text)
-      sleep(1)
-
-  else:
-    #If type is not post, determine best method to post, build message, and post it to Slack as bot
-    if slack_config["post_type"] == "RTM":
-
       if slack_connect.rtm_connect():
         log.info("Bot connected and running!")
         for message in reversed(incomingMsgs):
+        if do_build:
           message = build_messages(message, typeOReview, data)
 
           log.info("Message: " + message["review_string"])
@@ -155,7 +121,7 @@ def post_to_slack(typeOReview, slack_config, data, incomingMsgs):
             "chat.postMessage",
             channel=slack_config["RTM"]["channel_ID"],
             text=message["review_string"],
-            as_user=False,
+          as_user=as_a_user,
             username=slack_config["username"],
             icon_emoji=bot_icon,
             unfurl_links=False
@@ -169,7 +135,7 @@ def post_to_slack(typeOReview, slack_config, data, incomingMsgs):
               "chat.postMessage",
               channel=slack_config["RTM"]["channel_ID"],
               text=message["translated_review"],
-              as_user=False,
+            as_user=as_a_user,
               username=slack_config["username"],
               icon_emoji=bot_icon,
               unfurl_links=False,
@@ -185,7 +151,9 @@ def post_to_slack(typeOReview, slack_config, data, incomingMsgs):
       slack_url = slack_config["webhook"]["URL"]
       log.info("Posting to slack: " + slack_url)
       for message in reversed(incomingMsgs):
+      if do_build:
         message = build_messages(message, typeOReview, data)
+
         log.info(requests.post(slack_url, json={
           "icon_emoji": bot_icon,
           "text": message["review_string"],
@@ -206,6 +174,7 @@ def post_to_slack(typeOReview, slack_config, data, incomingMsgs):
       slack_url = slack_config["slackbot"]["URL"] + "&channel=" + slack_config["channel"]
       log.info("Posting to slack: " + slack_url)
       for message in reversed(incomingMsgs):
+      if do_build:
         message = build_messages(message, typeOReview, data)
 
         log.info("Message: " + message["review_string"])
@@ -216,6 +185,7 @@ def post_to_slack(typeOReview, slack_config, data, incomingMsgs):
           sleep(1)
           log.info(requests.post(slack_url, message["translated_review"] + "\n----------------------------------").text)
         sleep(2)
+
   return slack_config
 
 def get_Android_reviews(playStoreInfo):
@@ -352,6 +322,11 @@ def get_Apple_reviews(appID, storeName, storeINFO, page=0):
   messages = []
 
   count = 0
+  try:
+    storedData["feed"]["entry"]
+  except KeyError as e:
+    return (skipVal, [])
+
   for x in storedData["feed"]["entry"]:
     if count == 0:
       count = count + 1
@@ -390,6 +365,7 @@ def main(argv):
   parser.add_argument('-p','--post', metavar="yer_str_here", help="post message directly to slack")
   parser.add_argument('-a','--android', action='store_true', help="gather Android reviews from API")
   parser.add_argument('-t','--test', action='store_true', help="use test slack settings from review.json")
+  parser.add_argument('-f','--file', action='store', dest="file_path", default="review.json", metavar="Ishtar.json", help="file location of review file")
 
   args = parser.parse_args()
 
@@ -405,8 +381,7 @@ def main(argv):
     exit()
 
   #Import full slack settings and store information from a json file
-  fileLoc = "review.json"
-  with open(fileLoc,'r') as sJson:
+  with open(args.file_path,'r') as sJson:
     storeData = json.load(sJson)
   
   if args.test:
@@ -454,7 +429,7 @@ def main(argv):
       log.warning("Moving test/live slack settings back to normal places.")
       storeData["slackURL"] = BACKUP_SLACK
 
-    with open(fileLoc,'w') as sJson:
+    with open(args.file_path,'w') as sJson:
       json.dump(storeData, sJson, indent=4)
 
     log.info("Reached last country. Exiting.")
@@ -489,19 +464,22 @@ def main(argv):
       log.warning("Moving test/live slack settings back to normal places.")
       storeData["slackURL"] = BACKUP_SLACK
 
-    with open(fileLoc,'w') as sJson:
+    with open(args.file_path,'w') as sJson:
       json.dump(storeData, sJson, indent=4)
     log.info("Reached last country. Exiting.")
 
   elif args.post is not None:
     #Manually post directly to Slack as bot
-    storeData["slackURL"] = post_to_slack("post", storeData["slackURL"], storeData["appstores"]["United States"], args.post)
+    postDict = [
+      {"review_string": args.post}
+    ]
+    storeData["slackURL"] = post_to_slack("post", storeData["slackURL"], storeData["appstores"]["United States"], postDict)
 
     if args.test:
       log.warning("Moving test/live slack settings back to normal places.")
       storeData["slackURL"] = BACKUP_SLACK
 
-    with open(fileLoc, 'w') as sJson:
+    with open(args.file_path, 'w') as sJson:
       json.dump(storeData, sJson, indent=4)
 
 if __name__ == '__main__':
