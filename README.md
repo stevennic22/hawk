@@ -9,7 +9,7 @@
 - Translate non-english reviews
   - Some languages are currently not working properly (Chinese/Japanese). [#5](../../issues/5)
 - Use test/debug slack credentials to test formatting elsewhere, without missing reviews and posts on a live slack
-  - Example: `python review.pyw -ta` would search for Android reviews, post them to a test Slack and not update review.json for new stop values
+  - Example: `python review.pyw -ta -f "review.json"` would search for Android reviews, post them to a test Slack and not update review.json for new stop values
 
 ### Language(s)
 
