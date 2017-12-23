@@ -108,83 +108,83 @@ def post_to_slack(typeOReview, slack_config, data, incomingMsgs, do_build = True
     do_build = False
     as_a_user = True
 
-    if slack_config["post_type"] == "RTM":
-      if slack_connect.rtm_connect():
-        log.info("Bot connected and running!")
-        for message in reversed(incomingMsgs):
+  if slack_config["post_type"] == "RTM":
+    if slack_connect.rtm_connect():
+      log.info("Bot connected and running!")
+      for message in reversed(incomingMsgs):
         if do_build:
           message = build_messages(message, typeOReview, data)
 
-          log.info("Message: " + message["review_string"])
+        log.info("Message: " + message["review_string"])
 
-          mostRecentMessage = slack_connect.api_call(
+        mostRecentMessage = slack_connect.api_call(
+          "chat.postMessage",
+          channel=slack_config["RTM"]["channel_ID"],
+          text=message["review_string"],
+          as_user=as_a_user,
+          username=slack_config["username"],
+          icon_emoji=bot_icon,
+          unfurl_links=False
+        )
+        log.info("Response: ")
+        log.info(mostRecentMessage)
+
+        if "translated_review" in message:
+          log.info("Translated review: " + message["translated_review"])
+          followUpMessage = slack_connect.api_call(
             "chat.postMessage",
             channel=slack_config["RTM"]["channel_ID"],
-            text=message["review_string"],
-          as_user=as_a_user,
+            text=message["translated_review"],
+            as_user=as_a_user,
             username=slack_config["username"],
             icon_emoji=bot_icon,
-            unfurl_links=False
+            unfurl_links=False,
+            reply_broadcast=False,
+            thread_ts= mostRecentMessage['ts']
           )
-          log.info("Response: ")
-          log.info(mostRecentMessage)
+          
+          log.info("Translation response: ")
+          log.info(followUpMessage)
+        sleep(2)
 
-          if "translated_review" in message:
-            log.info("Translated review: " + message["translated_review"])
-            followUpMessage = slack_connect.api_call(
-              "chat.postMessage",
-              channel=slack_config["RTM"]["channel_ID"],
-              text=message["translated_review"],
-            as_user=as_a_user,
-              username=slack_config["username"],
-              icon_emoji=bot_icon,
-              unfurl_links=False,
-              reply_broadcast=False,
-              thread_ts= mostRecentMessage['ts']
-            )
-            
-            log.info("Translation response: ")
-            log.info(followUpMessage)
-          sleep(2)
-
-    elif slack_config["post_type"] == "webhook":
-      slack_url = slack_config["webhook"]["URL"]
-      log.info("Posting to slack: " + slack_url)
-      for message in reversed(incomingMsgs):
+  elif slack_config["post_type"] == "webhook":
+    slack_url = slack_config["webhook"]["URL"]
+    log.info("Posting to slack: " + slack_url)
+    for message in reversed(incomingMsgs):
       if do_build:
         message = build_messages(message, typeOReview, data)
 
+      log.info(requests.post(slack_url, json={
+        "icon_emoji": bot_icon,
+        "text": message["review_string"],
+        "username": slack_config["username"]
+      }).text)
+      
+      if "translated_review" in message:
+        log.info("Translated review: " + message["translated_review"])
+        sleep(1)
         log.info(requests.post(slack_url, json={
           "icon_emoji": bot_icon,
-          "text": message["review_string"],
+          "text": "  " + message["translated_review"] + "\n----------------------------------",
           "username": slack_config["username"]
         }).text)
-        
-        if "translated_review" in message:
-          log.info("Translated review: " + message["translated_review"])
-          sleep(1)
-          log.info(requests.post(slack_url, json={
-            "icon_emoji": bot_icon,
-            "text": "  " + message["translated_review"] + "\n----------------------------------",
-            "username": slack_config["username"]
-          }).text)
-        sleep(2)
+      sleep(2)
 
-    elif slack_config["post_type"] == "slackbot":
-      slack_url = slack_config["slackbot"]["URL"] + "&channel=" + slack_config["channel"]
-      log.info("Posting to slack: " + slack_url)
-      for message in reversed(incomingMsgs):
+  elif slack_config["post_type"] == "slackbot":
+    slack_url = slack_config["slackbot"]["URL"] + "&channel=" + slack_config["channel"]
+    log.info("Posting to slack: " + slack_url)
+    for message in reversed(incomingMsgs):
       if do_build:
         message = build_messages(message, typeOReview, data)
 
-        log.info("Message: " + message["review_string"])
-        log.info(requests.post(slack_url, message["review_string"]).text)
-        
-        if "translated_review" in message:
-          log.info("Translated review: " + message["translated_review"])
-          sleep(1)
-          log.info(requests.post(slack_url, message["translated_review"] + "\n----------------------------------").text)
-        sleep(2)
+      log.info("Message: " + message["review_string"])
+      log.info(requests.post(slack_url, message["review_string"]).text)
+      
+      if "translated_review" in message:
+        log.info("Translated review: " + message["translated_review"])
+        sleep(1)
+        log.info(requests.post(slack_url, message["translated_review"] + "\n----------------------------------").text)
+      sleep(2)
 
   return slack_config
 
