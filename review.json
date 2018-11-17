@@ -46,9 +46,9 @@
             "countryLang": "en_CA",
             "translate": "False", 
             "flag": ":flag-ca:", 
-            "appleCheck": "", 
             "skip": "False", 
-            "playstoreCheck": ""
+            "ahistory": [],
+            "ihistory": []
         }
     }
 }

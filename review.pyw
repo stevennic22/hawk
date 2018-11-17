@@ -54,11 +54,19 @@ def setup_RTM(slack_configuration):
           slack_configuration["RTM"]["channel_ID"] = channel['id']
   return slack_configuration, slack_connection
 
-def translate_text(reviewText, startLang, returnLang = "en"):
+def cleanse_Postings(list_to_check):
+  if (len(list_to_check) > 60):
+    to_remove = len(list_to_check) - 60
+    log.warning(to_remove)
+    del(list_to_check[-to_remove:-1])
+    #print len(list_to_check)
+  return list_to_check
+
+def translate_text(reviewText, startLang, type_o_post = "review", returnLang = "en"):
   #Translate provided text
   #Return it as a single string
   try:
-    log.info("Translating")
+    log.info("Translating " + type_o_post)
     reviewText = reviewText.encode('utf-8','ignore')
   except UnicodeEncodeError as e:
     log.error("UnicodeEncodeError when translating")
@@ -69,6 +77,9 @@ def translate_text(reviewText, startLang, returnLang = "en"):
   sleep(1)
 
   response = requests.get(transURL)
+  if(int(response.status_code) > 499):
+    log.error(str(response.status_code) + " when attempting translate text. Returning error string.")
+    return "Error translating. Sorry about that. Beginning language was: " + startLang
 
   responseString = ""
 
@@ -88,8 +99,8 @@ def build_messages(buildDict, appStoreType, countryData):
     buildDict["review_string"] = "_" + buildDict["date"] + " | " + buildDict["version"] + "_\n" + buildDict["stars"] + " _by " + buildDict["author"] + "_ " + countryData["flag"] + "\n*" + buildDict["title"] + "*\n" + buildDict["review"] + "\n----------------------------------"
     
     if countryData["translate"] == "True":
-      translated_title = translate_text(buildDict["title"], countryData["countryLang"][:2])
-      translated_review = translate_text(buildDict["review"], countryData["countryLang"][:2])
+      translated_title = translate_text(buildDict["title"], countryData["countryLang"][:2], "title")
+      translated_review = translate_text(buildDict["review"], countryData["countryLang"][:2], "review")
       buildDict["translated_review"] = translated_title + " | " + translated_review
       
   return buildDict
@@ -231,9 +242,7 @@ def get_Android_reviews(playStoreInfo):
 def sort_Android_reviews(data, allReviews):
   #Sort through reviews from the Play Store
   #If reviews match country, add to list to return for posting to slack
-  #Stops and returns everything if skip value found
-  skipVal = data["playstoreCheck"]
-  trip = False
+  #Reviews added to list to return for posting to slack (if not in list of previous postings)
 
   messages = []
 
@@ -241,8 +250,13 @@ def sort_Android_reviews(data, allReviews):
     if data["countryLang"] != x["comments"][0]["userComment"]["reviewerLanguage"]:
       continue
 
-    if data["playstoreCheck"] == x["reviewId"]:
-      break
+    skipMe = False
+    for y in data["ahistory"]:
+      if (y["id"] == x["reviewId"]):
+        skipMe = True
+      
+    if skipMe:
+      continue
 
     reviewDate = x["comments"][0]["userComment"]["lastModified"]["seconds"]
     reviewDate = datetime.datetime.fromtimestamp(int(reviewDate)).strftime("%B %#d, %Y")
@@ -271,18 +285,14 @@ def sort_Android_reviews(data, allReviews):
         stars = stars + u"☆ "
         count = count + 1
 
-    if not trip:
-      trip = True
-      skipVal = x["reviewId"]
-
     messages.append({"author": authorName, "version": appVersion, "date": reviewDate, "review": review, "link": reviewLink, "stars": stars})
-  return [skipVal, messages]
+    data["ahistory"].append({"id": x["reviewId"], "name": authorName, "review": review, "link": reviewLink})
+  return [data["ahistory"], messages]
 
 def get_Apple_reviews(appID, storeName, storeINFO, page=0):
   #Sort through reviews from the Apple store
-  #Reviews added to list to return for posting to slack (if found before skip/stop value)
+  #Reviews added to list to return for posting to slack (if not in list of previous postings)
   storeID = storeINFO["appleStoreID"]
-  skipVal = storeINFO["appleCheck"]
   
   #If the language needs to be set,
   #url can be: "https://itunes.apple.com/en/rss/customerreviews/id=" + appID + "/sortBy=mostRecent/json"
@@ -308,7 +318,7 @@ def get_Apple_reviews(appID, storeName, storeINFO, page=0):
     storedData = "error"
 	
   if type(storedData) == str:
-    return (skipVal, [])
+    return (storeINFO["ihistory"], [])
 
   #Dump to an output file
   if(os.path.isdir('output') == False):
@@ -316,24 +326,26 @@ def get_Apple_reviews(appID, storeName, storeINFO, page=0):
   with open('output' + os.sep + storeName + '_output.json', "w") as outfile:
     json.dump(storedData, outfile, indent=4)
 
-  trip = False
-  tripCase = skipVal
-
   messages = []
 
   count = 0
   try:
     storedData["feed"]["entry"]
   except KeyError as e:
-    return (skipVal, [])
+    return (storeINFO["ihistory"], [])
 
   for x in storedData["feed"]["entry"]:
     if count == 0:
       count = count + 1
       continue
 
-    if skipVal == x["author"]["name"]["label"]:
-      break
+    skipMe = False
+    for y in storeINFO["ihistory"]:
+      if (y["id"] == x["id"]["label"]):
+        skipMe = True
+      
+    if skipMe:
+      continue
 
     count = 0
     stars = ""
@@ -346,12 +358,9 @@ def get_Apple_reviews(appID, storeName, storeINFO, page=0):
         stars = stars + u"☆ "
         count = count + 1
 
-    if not trip:
-      trip = True
-      tripCase = x["author"]["name"]["label"]
-
     messages.append({"author": x["author"]["name"]["label"], "version": x["im:version"]["label"], "date": datetime.datetime.now().strftime("%B %#d, %Y"), "title": x["title"]["label"], "review": x["content"]["label"], "link": x['link']['attributes']['href'], "stars": stars})
-  return [tripCase, messages]
+    storeINFO["ihistory"].append({"author": x["author"]["name"]["label"], "id": x["id"]["label"], "review": x["content"]["label"], "link": x['link']['attributes']['href']})
+  return [storeINFO["ihistory"], messages]
 
 def main(argv):
   log.info("Starting to parse arguments")
@@ -364,8 +373,8 @@ def main(argv):
   parser.add_argument('-i','--ios', action='store_true', help="gather iOS reviews from RSS feeds")
   parser.add_argument('-p','--post', metavar="yer_str_here", help="post message directly to slack")
   parser.add_argument('-a','--android', action='store_true', help="gather Android reviews from API")
-  parser.add_argument('-t','--test', action='store_true', help="use test slack settings from review.json")
-  parser.add_argument('-f','--file', action='store', dest="file_path", default="review.json", metavar="Ishtar.json", help="file location of review file")
+  parser.add_argument('-t','--test', action='store_true', help="use test slack settings from imported review json")
+  parser.add_argument('-f','--file', action='store', dest="file_path", default="review.json", metavar="review.json", help="file location of review file")
 
   args = parser.parse_args()
 
@@ -380,6 +389,13 @@ def main(argv):
     parser.print_help()
     exit()
 
+  #Check commandline arguments
+  if args.help:
+    log.error("Help message requested. Printing help message and closing.")
+    parser.print_help()
+    exit()
+
+
   #Import full slack settings and store information from a json file
   with open(args.file_path,'r') as sJson:
     storeData = json.load(sJson)
@@ -393,17 +409,12 @@ def main(argv):
     log.warning("All scripts disabled. Exiting.")
     exit()
 
-  #Check commandline arguments
-  if args.help:
-    log.error("Help message requested. Printing help message and closing.")
-    parser.print_help()
-    exit()
-  elif args.android:
+  if args.android:
     print "Android"
     print ""
     reviews = get_Android_reviews(storeData["playStore"])
 
-    #Loop through stores imported from review.json
+    #Loop through stores imported from imported review json
     #Extract reviews, post new ones for each store to Slack
     for store, data in storeData["appstores"].iteritems():
       log.info(store)
@@ -412,17 +423,18 @@ def main(argv):
       if data["skip"] == "True":
         log.warning(store + " skipped.")
         continue
-      nextStop, reviews_to_post = sort_Android_reviews(data, reviews)
+      updated_History, reviews_to_post = sort_Android_reviews(data, reviews)
       
       if args.test:
-        log.warning("Ignoring updated stop value: " + nextStop)
+        log.warning("Ignoring updated history information.")
       else:
-        data["playstoreCheck"] = nextStop
-        log.info(store + " stop value: " + nextStop)
+        data["ahistory"] = updated_History
+        log.info(store + " history updated.")
 
       if len(reviews_to_post) > 0:
         storeData["slackURL"] = post_to_slack("android", storeData["slackURL"], data, reviews_to_post)
 
+      data["ahistory"] = cleanse_Postings(data["ahistory"])
       sleep(2)
 
     if args.test:
@@ -437,7 +449,7 @@ def main(argv):
     print "iOS"
     print ""
 
-    #Loop through stores imported from review.json
+    #Loop through stores imported from imported review json
     #Extract reviews, post new ones for each store to Slack
     for store, data in storeData["appstores"].iteritems():
       log.info(store)
@@ -447,17 +459,18 @@ def main(argv):
         log.warning(store + " skipped.")
         continue
 
-      nextStop, reviews_to_post = get_Apple_reviews(storeData["appStore"]["appstoreID"], store, data)
+      updated_History, reviews_to_post = get_Apple_reviews(storeData["appStore"]["appstoreID"], store, data)
       
       if args.test:
-        log.warning("Ignoring updated stop value: " + nextStop)
+        log.warning("Ignoring updated history information.")
       else:
-        data["appleCheck"] = nextStop
-        log.info(store + " stop value: " + nextStop)
+        data["ihistory"] = updated_History
+        log.info(store + " history updated.")
 
       if len(reviews_to_post) > 0:
         storeData["slackURL"] = post_to_slack("ios", storeData["slackURL"], data, reviews_to_post)
 
+      data["ihistory"] = cleanse_Postings(data["ihistory"])
       sleep(2)
 
     if args.test:
