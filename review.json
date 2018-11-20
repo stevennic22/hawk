@@ -37,7 +37,8 @@
         ]
     }, 
     "appStore": {
-        "appstoreID": ""
+        "appstoreID": "", 
+        "macstoreID": ""
     }, 
     "actuallyRun": "True", 
     "appstores": {
@@ -48,7 +49,8 @@
             "flag": ":flag-ca:", 
             "skip": "False", 
             "ahistory": [],
-            "ihistory": []
+            "ihistory": [],
+            "mhistory": []
         }
     }
 }

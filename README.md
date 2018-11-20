@@ -13,7 +13,7 @@
 
 ### Language(s)
 
-- Python
+- Python 2.7 (at the moment)
 
 ### Requirements
 
