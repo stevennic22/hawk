@@ -30,7 +30,7 @@ else:
 
 #Start log handler
 log = logging.getLogger(__name__)
-log.setLevel(logging.WARNING)
+log.setLevel(logging.INFO)
 handler = logging.FileHandler(logFileName)
 formatter = logging.Formatter("[%(asctime)s] '%(levelname)s': { %(message)s }\n")
 handler.setFormatter(formatter)
