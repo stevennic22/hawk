@@ -1,0 +1,5 @@
+Requests>=2.21.0
+Google-API-Python-Client>=1.7.6
+OAuth2Client>=4.1.3
+PyOpenSSL>=18.0.0
+SlackClient>=1.3.0

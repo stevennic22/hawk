@@ -13,14 +13,16 @@
 
 ### Language(s)
 
-- Python 2.7 (at the moment)
+- Python 3.7 (tested, lower may be available)
 
 ### Requirements
 
-| Modules
+| Modules [(found here)](requirements.txt)
 | ------------------------------------------------------------------------------------------------------
 | [Requests](https://pypi.python.org/pypi/requests)
 | [Google API Python Client](https://developers.google.com/api-client-library/python/start/installation)
+| [OAuth2Client](https://pypi.org/project/oauth2client/)
+| [PyOpenSSL](https://pypi.org/project/pyOpenSSL/)
 | [SlackClient RTM API](https://pypi.python.org/pypi/slackclient) (Optional)
 
 ### Instructions
